@@ -1,0 +1,93 @@
+plugins {
+    id 'java-library'
+    id 'maven-publish'
+}
+
+repositories {
+    mavenCentral()
+    maven { url = 'https://maven.citizensnpcs.co/repo' }
+    maven { url = 'https://repo.papermc.io/repository/maven-public/' }
+    maven { url = 'https://jitpack.io' }
+    maven { url = 'https://repo.extendedclip.com/content/repositories/placeholderapi/' }
+}
+
+java {
+    toolchain.languageVersion = JavaLanguageVersion.of(21)
+}
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+    options.release = 21
+}
+
+configurations {
+    mockitoAgent
+    testImplementation.extendsFrom compileOnly
+}
+dependencies {
+    compileOnly('net.citizensnpcs:citizens-main:2.0.35-SNAPSHOT') { transitive = false }
+    compileOnly 'io.papermc.paper:paper-api:1.21.10-R0.1-SNAPSHOT'
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.11.4'
+    testImplementation 'org.mockito:mockito-core:5.23.0'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+    mockitoAgent('org.mockito:mockito-core:5.23.0') { transitive = false }
+}
+tasks.withType(Test).configureEach {
+    useJUnitPlatform()
+    jvmArgs "-javaagent:${configurations.mockitoAgent.singleFile}"
+}
+group = 'io.github.saboooor'
+version = '1.1.0'
+description = 'BeautyQuests escort stages powered by Citizens NPC following.'
+
+publishing {
+    publications {
+        mavenJava(MavenPublication) {
+            from components.java
+            pom {
+                name = 'LumiFollow'
+                description = project.description
+                licenses {
+                    license {
+                        name = 'GNU General Public License v3.0'
+                        url = 'https://www.gnu.org/licenses/gpl-3.0.html'
+                    }
+                }
+            }
+        }
+    }
+}
+
+repositories {
+    ivy {
+        url = 'https://github.com/SkytAsul/BeautyQuests/releases/download'
+        patternLayout { artifact '[revision]/[artifact]-[revision].[ext]' }
+        metadataSources { artifact() }
+        content { includeGroup 'fr.skytasul.release' }
+    }
+}
+dependencies {
+    compileOnly('fr.skytasul.release:beautyquests:2.0.0') { transitive = false }
+    testImplementation 'commons-lang:commons-lang:2.6'
+}
+tasks.named('processResources') {
+    inputs.property('version', project.version)
+    filesMatching('plugin.yml') { expand(version: project.version) }
+}
+tasks.named('jar') { archiveFileName = 'LumiFollow.jar' }
+
+// Check the independently deployable plugin, including its descriptor.
+tasks.register('verifyPluginJar') {
+    dependsOn tasks.named('jar')
+    inputs.file(tasks.named('jar').flatMap { it.archiveFile })
+    doLast {
+        new java.util.zip.ZipFile(tasks.named('jar').get().archiveFile.get().asFile).withCloseable { zip ->
+            ['plugin.yml', 'io/github/saboooor/lumifollow/LumiFollow.class',
+             'io/github/saboooor/lumifollow/quests/LumiFollowPlugin.class'].each { entry ->
+                if (zip.getEntry(entry) == null) throw new GradleException("Missing plugin entry: ${entry}")
+            }
+            if (zip.entries().any { it.name.startsWith('com/drugs/') })
+                throw new GradleException('LumiFollow must not bundle LumiDrugs classes')
+        }
+    }
+}
+tasks.named('check') { dependsOn tasks.named('verifyPluginJar') }

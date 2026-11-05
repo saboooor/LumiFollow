@@ -1,0 +1,18 @@
+# Refer to these profiles from a BeautyQuests stage using stageType: lumi-follow.
+# Set npc-id to an existing Citizens NPC ID before adding the stage to a quest.
+escorts:
+  default:
+    npc-id: -1
+    destination:
+      world: world
+      x: 0.5
+      y: 64
+      z: 0.5
+    arrival-radius: 4
+    open-doors: false
+    climbing: true
+    max-climb-height: 6
+    climb-timeout-ticks: 100
+    teleport-recovery: true
+    follow-teleports: true
+    cross-world: false

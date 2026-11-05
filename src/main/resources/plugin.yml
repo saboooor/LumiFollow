@@ -1,0 +1,6 @@
+name: LumiFollow
+version: '${version}'
+main: io.github.saboooor.lumifollow.quests.LumiFollowPlugin
+api-version: '1.21'
+depend: [Citizens, BeautyQuests]
+description: Configurable BeautyQuests NPC escort stages.
