@@ -7,16 +7,26 @@ import fr.skytasul.quests.api.stages.creation.StageCreation;
 import fr.skytasul.quests.api.stages.creation.StageGuiLine;
 import io.github.saboooor.lumifollow.LumiFollow;
 import net.citizensnpcs.api.CitizensAPI;
+import net.citizensnpcs.api.event.CitizensEnableEvent;
+import net.citizensnpcs.api.event.CitizensReloadEvent;
 import net.citizensnpcs.api.npc.NPC;
+import net.citizensnpcs.api.npc.NPCRegistry;
+import org.bukkit.Bukkit;
+import org.bukkit.Location;
 import org.bukkit.Material;
+import org.bukkit.World;
 import org.bukkit.command.PluginCommand;
 import org.bukkit.configuration.ConfigurationSection;
+import org.bukkit.entity.EntityType;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.Listener;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.scheduler.BukkitTask;
+import java.nio.charset.StandardCharsets;
 import java.util.*;
 
-public final class LumiFollowPlugin extends JavaPlugin {
+public final class LumiFollowPlugin extends JavaPlugin implements Listener {
     final Set<EscortStage> stages = Collections.newSetFromMap(new IdentityHashMap<>());
     final Set<FollowStageOption<?>> followOptions = Collections.newSetFromMap(new IdentityHashMap<>());
     final NpcLeases leases = new NpcLeases();
@@ -26,6 +36,14 @@ public final class LumiFollowPlugin extends JavaPlugin {
     @Override public void onEnable() {
         saveDefaultConfig();
         following = new LumiFollow(this);
+        getServer().getPluginManager().registerEvents(this, this);
+        // Eagerly initialize EscortProfile classes and any configured Citizens NPCs on enable
+        Class<?> preloadProfile = EscortProfile.class;
+        Class<?> preloadPolicy = EscortProfile.EndPolicy.class;
+        Class<?> preloadHome = EscortProfile.HomeLocation.class;
+        if (preloadProfile != null && preloadPolicy != null && preloadHome != null) {
+            ensureConfiguredNpcs();
+        }
         PluginCommand command = getCommand("lumifollow");
         if (command != null) {
             LumiFollowCommand executor = new LumiFollowCommand(this);
@@ -104,6 +122,7 @@ public final class LumiFollowPlugin extends JavaPlugin {
     }
     int reloadPluginConfig() {
         reloadConfig();
+        ensureConfiguredNpcs();
         ConfigurationSection section = getConfig().getConfigurationSection("escorts");
         int validCount = 0;
         if (section != null) {
@@ -119,6 +138,59 @@ public final class LumiFollowPlugin extends JavaPlugin {
             stage.reloadProfile();
         }
         return validCount;
+    }
+    @EventHandler public void onCitizensEnable(CitizensEnableEvent event) {
+        ensureConfiguredNpcs();
+    }
+    @EventHandler public void onCitizensReload(CitizensReloadEvent event) {
+        ensureConfiguredNpcs();
+    }
+    void ensureConfiguredNpcs() {
+        try {
+            if (!CitizensAPI.hasImplementation()) return;
+            NPCRegistry registry = CitizensAPI.getNPCRegistry();
+            if (registry == null) return;
+            ConfigurationSection escorts = getConfig().getConfigurationSection("escorts");
+            if (escorts == null) return;
+            boolean createdAny = false;
+            for (String key : escorts.getKeys(false)) {
+                ConfigurationSection sub = escorts.getConfigurationSection(key);
+                if (sub == null) continue;
+                int npcId = sub.getInt("npc-id", -1);
+                if (npcId < 0) continue;
+                String npcName = sub.getString("npc-name", "").trim();
+                Location spawnLoc = readSpawnLocation(sub);
+                NPC npc = registry.getById(npcId);
+                if (npc == null && !npcName.isEmpty() && spawnLoc != null) {
+                    UUID uuid = UUID.nameUUIDFromBytes(("lumifollow-npc-" + npcId).getBytes(StandardCharsets.UTF_8));
+                    npc = registry.createNPC(EntityType.PLAYER, uuid, npcId, npcName);
+                    npc.setProtected(true);
+                    npc.data().setPersistent("collidable", false);
+                    npc.spawn(spawnLoc);
+                    createdAny = true;
+                } else if (npc != null && !npc.isSpawned() && spawnLoc != null) {
+                    npc.spawn(spawnLoc);
+                }
+            }
+            if (createdAny) {
+                registry.saveToStore();
+            }
+        } catch (Throwable ignored) {}
+    }
+    private static Location readSpawnLocation(ConfigurationSection sub) {
+        ConfigurationSection locSec = sub.getConfigurationSection("home");
+        if (locSec == null) {
+            locSec = sub.getConfigurationSection("destination");
+        }
+        if (locSec == null) return null;
+        String worldName = locSec.getString("world", sub.getString("destination.world", "world"));
+        if (worldName == null || worldName.isBlank()) return null;
+        World world = Bukkit.getWorld(worldName);
+        if (world == null) return null;
+        if (!(locSec.get("x") instanceof Number) || !(locSec.get("y") instanceof Number) || !(locSec.get("z") instanceof Number)) {
+            return null;
+        }
+        return new Location(world, locSec.getDouble("x"), locSec.getDouble("y"), locSec.getDouble("z"));
     }
     boolean releaseNpcLease(int npcId) {
         for (NPC npc : List.copyOf(leases.snapshot().keySet())) {
@@ -167,7 +239,13 @@ public final class LumiFollowPlugin extends JavaPlugin {
                 .replace("{z}", String.valueOf(profile.z()));
     }
     EscortProfile profile(String name) {
-        return EscortProfile.read(getConfig().getConfigurationSection("escorts." + name));
+        ConfigurationSection section = getConfig().getConfigurationSection("escorts." + name);
+        if (section == null) {
+            reloadConfig();
+            section = getConfig().getConfigurationSection("escorts." + name);
+        }
+        ensureConfiguredNpcs();
+        return EscortProfile.read(section);
     }
     @Override public void onDisable() {
         if (task != null) task.cancel();

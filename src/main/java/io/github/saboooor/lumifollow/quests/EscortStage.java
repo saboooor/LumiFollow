@@ -126,21 +126,25 @@ public final class EscortStage extends AbstractStage {
         }
     }
     private NPC resolveTargetNpc(Session session) {
+        NPC existing = CitizensAPI.getNPCRegistry().getById(profile.npcId());
+        if (existing == null || !existing.isSpawned()) {
+            plugin.ensureConfiguredNpcs();
+            existing = CitizensAPI.getNPCRegistry().getById(profile.npcId());
+        }
         if (profile.cloneNpc()) {
             if (session.npc != null && session.cloned) return session.npc;
-            NPC template = CitizensAPI.getNPCRegistry().getById(profile.npcId());
-            if (template == null) return null;
-            NPC cloned = template.clone();
+            if (existing == null) return null;
+            NPC cloned = existing.clone();
             if (cloned == null) return null;
             if (!cloned.isSpawned()) {
                 Location spawnLoc = profile.home() != null ? profile.home().toBukkitLocation() : null;
-                if (spawnLoc == null) spawnLoc = snapshotLocation(template);
+                if (spawnLoc == null) spawnLoc = snapshotLocation(existing);
                 if (spawnLoc != null) cloned.spawn(spawnLoc);
             }
             session.cloned = true;
             return cloned;
         }
-        return CitizensAPI.getNPCRegistry().getById(profile.npcId());
+        return existing;
     }
     private static Location snapshotLocation(NPC npc) {
         if (npc.isSpawned() && npc.getEntity() != null && npc.getEntity().getLocation() != null) {
