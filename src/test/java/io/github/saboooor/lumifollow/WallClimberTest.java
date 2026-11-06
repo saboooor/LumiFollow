@@ -208,4 +208,30 @@ class WallClimberTest {
         assertFalse(climber.openDoorsInWay(entity, target));
         verify(bottomData, never()).setOpen(anyBoolean());
     }
+
+    @Test void automaticallyClosesOpenedDoorsAfterConfiguredDelayWhenClear() {
+        terrain(3);
+        when(entity.getLocation()).thenReturn(new Location(world, 0.5, 64, 0.5));
+        when(target.getLocation()).thenReturn(new Location(world, 3.5, 64, 0.5));
+
+        Block doorBottom = mock(Block.class);
+        Door bottomData = mock(Door.class);
+        java.util.concurrent.atomic.AtomicBoolean open = new java.util.concurrent.atomic.AtomicBoolean(false);
+        when(bottomData.isOpen()).thenAnswer(i -> open.get());
+        doAnswer(i -> { open.set(i.getArgument(0)); return null; }).when(bottomData).setOpen(anyBoolean());
+        when(doorBottom.getBlockData()).thenReturn(bottomData);
+        when(doorBottom.getType()).thenReturn(Material.OAK_DOOR);
+        when(doorBottom.getLocation()).thenReturn(new Location(world, 1, 64, 0));
+        when(world.getBlockAt(eq(1), eq(64), eq(0))).thenReturn(doorBottom);
+
+        assertTrue(climber.openDoorsInWay(entity, target));
+        assertTrue(open.get());
+
+        // Move entity past the doorway
+        when(entity.getLocation()).thenReturn(new Location(world, 3.5, 64, 0.5));
+        climber.tickOpenedDoors(entity, target, 2);
+        assertTrue(open.get());
+        climber.tickOpenedDoors(entity, target, 2);
+        assertFalse(open.get());
+    }
 }

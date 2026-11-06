@@ -27,12 +27,19 @@ manager:
               enabled: true
               npc-data: npc
               open-doors: true
+              close-doors-delay-ticks: 0
               climbing: true
               max-climb-height: 6
               climb-timeout-ticks: 100
               teleport-recovery: true
               follow-teleports: true
               cross-world: false
+              walk-speed: 1.15
+              sprint-speed: 1.5
+              stop-distance: 2.5
+              range: 64
+              teleport-sound: true
+              mount-vehicles: false
       endingStages: {}
 ```
 
@@ -79,6 +86,20 @@ This objective escorts that NPC to the profile destination and completes when bo
 player and NPC arrive and validation requirements pass. The follow option runs alongside
 an objective; the escort stage is itself an objective. The default profile is an example
 and must be configured for your server's NPC and world.
+
+Escort profiles in `config.yml` also support:
+- `on-end`: `STAY` (default), `RETURN_TO_START` (returns to the NPC's snapshot origin), or `RETURN_HOME` (returns to `home.world`, `home.x`, `home.y`, `home.z`).
+- `clone-npc`: spawns a per-player temporary clone of the template NPC so multiple players can run the escort concurrently, destroying the clone when the stage ends.
+- `fail-on-npc-death` and `death-branch`: fails the escort if the NPC dies or despawns mid-escort, either switching to `death-branch` (when `>= 0`) or cancelling the quest.
+- `close-doors-delay-ticks`: automatically closes doors/gates opened by the NPC once it has moved past them.
+- `mount-vehicles`: allows the NPC to board an available passenger seat when the player enters a boat, minecart, or mount.
+
+## Commands
+
+Requires permission `lumifollow.admin` (default `op`):
+- `/lumifollow status` (or `/lf status`): inspect active escort stages, follow options, and leased NPCs.
+- `/lumifollow reload`: reload `config.yml` and refresh active escort stage profiles.
+- `/lumifollow release <npc-id|all>`: release stuck NPC leases and stop active following.
 
 ## Movement behavior
 

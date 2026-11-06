@@ -5,6 +5,7 @@ import net.citizensnpcs.api.astar.pathfinder.DoorExaminer;
 import net.citizensnpcs.api.npc.NPC;
 import org.bukkit.Location;
 import org.bukkit.Sound;
+import org.bukkit.entity.Entity;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
 import org.bukkit.event.player.PlayerTeleportEvent.TeleportCause;
@@ -67,6 +68,9 @@ public final class FollowController implements AutoCloseable {
     void tick() {
         if (closed || !valid() || target == null || !target.isOnline() || target.isDead()) { stop(); return; }
         if (recoveryTicks > 0) recoveryTicks--;
+        if (options.openDoors() && options.closeDoorsDelayTicks() > 0) {
+            climber.tickOpenedDoors(entity(), target, options.closeDoorsDelayTicks());
+        }
         Location here = entity().getLocation(), goal = target.getLocation();
         if (!here.getWorld().equals(goal.getWorld())) {
             if (!options.crossWorld()) { stop(); return; }
@@ -74,6 +78,28 @@ public final class FollowController implements AutoCloseable {
             return;
         }
         double distance = here.distanceSquared(goal);
+        if (options.mountVehicles()) {
+            Entity vehicle = target.getVehicle();
+            if (vehicle != null && vehicle.isValid()) {
+                if (entity().getVehicle() == vehicle) {
+                    if (npc.getNavigator().isNavigating()) npc.getNavigator().cancelNavigation();
+                    resetMotion();
+                    previousTargetLocation = goal;
+                    return;
+                }
+                double mountRange = Math.max(options.stopDistance() * 3.0, 5.0);
+                if (distance <= mountRange * mountRange && vehicle.getPassengers().size() < 2) {
+                    if (npc.getNavigator().isNavigating()) npc.getNavigator().cancelNavigation();
+                    if (vehicle.addPassenger(entity())) {
+                        resetMotion();
+                        previousTargetLocation = goal;
+                        return;
+                    }
+                }
+            } else if (entity().isInsideVehicle()) {
+                entity().leaveVehicle();
+            }
+        }
         if (distance > options.range() * options.range() && options.teleportRecovery()) {
             recover();
             return;
@@ -167,6 +193,12 @@ public final class FollowController implements AutoCloseable {
     public void stop() {
         if (task != null) task.cancel();
         task = null; target = null; previousTargetLocation = null;
+        if (options.openDoors() && options.closeDoorsDelayTicks() > 0) {
+            climber.closeAllOpenedDoors(valid() ? entity() : null);
+        }
+        if (options.mountVehicles() && valid() && entity().isInsideVehicle()) {
+            entity().leaveVehicle();
+        }
         resetMotion();
         if (npc.getNavigator() != null) npc.getNavigator().cancelNavigation();
     }

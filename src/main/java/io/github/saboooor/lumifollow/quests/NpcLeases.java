@@ -1,6 +1,7 @@
 package io.github.saboooor.lumifollow.quests;
 
 import net.citizensnpcs.api.npc.NPC;
+import java.util.Collections;
 import java.util.IdentityHashMap;
 import java.util.Map;
 
@@ -17,6 +18,15 @@ final class NpcLeases {
         if (owners.get(npc) != owner) return false;
         owners.remove(npc);
         return true;
+    }
+    boolean forceRelease(NPC npc) {
+        return owners.remove(npc) != null;
+    }
+    Object owner(NPC npc) {
+        return owners.get(npc);
+    }
+    Map<NPC, Object> snapshot() {
+        return Collections.unmodifiableMap(new IdentityHashMap<>(owners));
     }
     void clear() { owners.clear(); }
 }

@@ -1,5 +1,10 @@
 # Refer to these profiles from a BeautyQuests stage using stageType: lumi-follow.
 # Set npc-id to an existing Citizens NPC ID before adding the stage to a quest.
+messages:
+  npc-busy: "§eYour escort NPC is unavailable or busy. This objective will wait."
+  npc-died: "§cYour escort NPC was killed!"
+  stage-description: "Escort {npc} to {world} ({x}, {y}, {z})"
+
 escorts:
   default:
     npc-id: -1
@@ -9,10 +14,22 @@ escorts:
       y: 64
       z: 0.5
     arrival-radius: 4
+    # STAY, RETURN_TO_START, or RETURN_HOME
+    on-end: STAY
+    clone-npc: false
+    fail-on-npc-death: false
+    death-branch: -1
+    walk-speed: 1.15
+    sprint-speed: 1.5
+    stop-distance: 2.5
+    range: 64
     open-doors: false
+    close-doors-delay-ticks: 0
     climbing: true
     max-climb-height: 6
     climb-timeout-ticks: 100
     teleport-recovery: true
     follow-teleports: true
     cross-world: false
+    teleport-sound: true
+    mount-vehicles: false

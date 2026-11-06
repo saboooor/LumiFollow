@@ -204,4 +204,26 @@ class FollowControllerTest {
         verify(npc, never()).destroy();
         assertThrows(IllegalStateException.class, () -> service.controller(npc, FollowOptions.defaults()));
     }
+    @Test void mountsTargetVehicleWhenEnabledAndDismountsWhenTargetExits() {
+        controller = new FollowController(plugin, npc, FollowOptions.defaults().withVehicles(true));
+        controller.follow(target);
+        org.bukkit.entity.Entity boat = mock(org.bukkit.entity.Entity.class);
+        when(boat.isValid()).thenReturn(true);
+        when(boat.getPassengers()).thenReturn(java.util.List.of(target));
+        when(boat.addPassenger(body)).thenReturn(true);
+        when(target.getVehicle()).thenReturn(boat);
+        when(target.getLocation()).thenReturn(new Location(world, 3, 64, 0));
+
+        controller.tick();
+        verify(boat).addPassenger(body);
+
+        when(body.getVehicle()).thenReturn(boat);
+        when(body.isInsideVehicle()).thenReturn(true);
+        controller.tick();
+        assertTrue(controller.isFollowing());
+
+        when(target.getVehicle()).thenReturn(null);
+        controller.tick();
+        verify(body).leaveVehicle();
+    }
 }

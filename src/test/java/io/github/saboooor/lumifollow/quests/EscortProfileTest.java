@@ -36,10 +36,35 @@ class EscortProfileTest {
     @Test void invalidOrUnconfiguredRoutesAreRejected() {
         assertThrows(IllegalArgumentException.class, () -> EscortProfile.read(null));
         for (var invalid : new Object[][]{{"npc-id", -1}, {"destination.x", Double.NaN},
-                {"arrival-radius", 1}, {"destination.world", ""}, {"destination.z", "not a number"}}) {
+                {"arrival-radius", 1}, {"destination.world", ""}, {"destination.z", "not a number"},
+                {"on-end", "INVALID_POLICY"}, {"home.x", "bad"}}) {
             var yaml = config();
             yaml.set((String) invalid[0], invalid[1]);
             assertThrows(IllegalArgumentException.class, () -> EscortProfile.read(yaml));
         }
+    }
+    @Test void readsExtendedLifecycleAndMovementOptions() {
+        var yaml = config();
+        yaml.set("on-end", "return-home");
+        yaml.set("home.world", "world");
+        yaml.set("home.x", 1);
+        yaml.set("home.y", 65);
+        yaml.set("home.z", 2);
+        yaml.set("clone-npc", true);
+        yaml.set("fail-on-npc-death", true);
+        yaml.set("death-branch", 3);
+        yaml.set("walk-speed", 1.3);
+        yaml.set("close-doors-delay-ticks", 40);
+        yaml.set("mount-vehicles", true);
+        var profile = EscortProfile.read(yaml);
+        assertEquals(EscortProfile.EndPolicy.RETURN_HOME, profile.endPolicy());
+        assertNotNull(profile.home());
+        assertEquals(1.0, profile.home().x());
+        assertTrue(profile.cloneNpc());
+        assertTrue(profile.failOnDeath());
+        assertEquals(3, profile.failureBranch());
+        assertEquals(1.3F, profile.options().walkSpeed(), 0.001F);
+        assertEquals(40, profile.options().closeDoorsDelayTicks());
+        assertTrue(profile.options().mountVehicles());
     }
 }

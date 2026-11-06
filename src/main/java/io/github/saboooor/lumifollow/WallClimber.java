@@ -13,11 +13,15 @@ import org.bukkit.entity.Player;
 import org.bukkit.util.Vector;
 
 import java.util.HashSet;
+import java.util.Iterator;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.Set;
 
 /** A bounded velocity assist; Citizens remains responsible for ordinary navigation. */
 final class WallClimber {
     private final boolean openDoors;
+    private final Map<Block, Integer> openedDoors = new LinkedHashMap<>();
 
     WallClimber() { this(true); }
     WallClimber(boolean openDoors) { this.openDoors = openDoors; }
@@ -32,6 +36,13 @@ final class WallClimber {
         ticks = 0;
         exhausted = false;
         dropping = false;
+    }
+
+    void closeAllOpenedDoors(LivingEntity entity) {
+        for (Block block : Set.copyOf(openedDoors.keySet())) {
+            closeDoor(block, entity);
+        }
+        openedDoors.clear();
     }
 
     boolean tick(LivingEntity entity, Player target, int maxHeight, int timeoutTicks) {
@@ -88,8 +99,8 @@ final class WallClimber {
             if (!wall.getWorld().isChunkLoaded(wall.getBlockX() >> 4, wall.getBlockZ() >> 4)) return false;
             Block wallBlock = wall.getBlock();
             if (openDoors && (isOpenable(wallBlock) || isOpenable(wallBlock.getRelative(BlockFace.UP)))) {
-                if (isOpenable(wallBlock)) openDoor(wallBlock, entity);
-                else openDoor(wallBlock.getRelative(BlockFace.UP), entity);
+                Block doorBlock = isOpenable(wallBlock) ? wallBlock : wallBlock.getRelative(BlockFace.UP);
+                if (openDoor(doorBlock, entity)) openedDoors.putIfAbsent(doorBlock, 0);
                 return false;
             }
             if (wallBlock.isPassable() || wallBlock.isLiquid()) return false;
@@ -225,12 +236,42 @@ final class WallClimber {
                 for (int dy : new int[]{0, 1, -1}) {
                     Block block = sample.getWorld().getBlockAt(sample.getBlockX(), sample.getBlockY() + dy, sample.getBlockZ());
                     if (checked.add(block) && isOpenable(block) && openDoor(block, entity)) {
+                        openedDoors.putIfAbsent(block, 0);
                         openedAny = true;
                     }
                 }
             }
         }
         return openedAny;
+    }
+
+    void tickOpenedDoors(LivingEntity entity, Player target, int closeDelayTicks) {
+        if (closeDelayTicks <= 0 || openedDoors.isEmpty()) return;
+        Location entityLoc = entity != null ? entity.getLocation() : null;
+        Location targetLoc = target != null ? target.getLocation() : null;
+        Iterator<Map.Entry<Block, Integer>> iterator = openedDoors.entrySet().iterator();
+        while (iterator.hasNext()) {
+            Map.Entry<Block, Integer> entry = iterator.next();
+            Block block = entry.getKey();
+            int elapsed = entry.getValue() + 1;
+            entry.setValue(elapsed);
+            if (elapsed < closeDelayTicks) continue;
+            Location doorLoc = block.getLocation();
+            if (doorLoc != null) {
+                if (entityLoc != null && entityLoc.getWorld().equals(doorLoc.getWorld())
+                        && horizontalDistanceSquared(entityLoc, doorLoc) < 1.44) continue;
+                if (targetLoc != null && targetLoc.getWorld().equals(doorLoc.getWorld())
+                        && horizontalDistanceSquared(targetLoc, doorLoc) < 1.44) continue;
+            }
+            closeDoor(block, entity);
+            iterator.remove();
+        }
+    }
+
+    private static double horizontalDistanceSquared(Location a, Location b) {
+        double dx = a.getX() - (b.getX() + 0.5);
+        double dz = a.getZ() - (b.getZ() + 0.5);
+        return dx * dx + dz * dz;
     }
 
     static boolean isOpenable(Block block) {
@@ -243,17 +284,25 @@ final class WallClimber {
     }
 
     static boolean openDoor(Block block, LivingEntity entity) {
+        return setDoorState(block, entity, true);
+    }
+
+    static boolean closeDoor(Block block, LivingEntity entity) {
+        return setDoorState(block, entity, false);
+    }
+
+    private static boolean setDoorState(Block block, LivingEntity entity, boolean open) {
         if (block == null) return false;
         try {
-            if (block.getBlockData() instanceof Openable openable && !openable.isOpen()) {
-                openable.setOpen(true);
+            if (block.getBlockData() instanceof Openable openable && openable.isOpen() != open) {
+                openable.setOpen(open);
                 block.setBlockData(openable, true);
                 if (openable instanceof Door door) {
                     Block otherHalf = door.getHalf() == Bisected.Half.BOTTOM
                             ? block.getRelative(BlockFace.UP)
                             : block.getRelative(BlockFace.DOWN);
-                    if (otherHalf != null && otherHalf.getBlockData() instanceof Openable other && !other.isOpen()) {
-                        other.setOpen(true);
+                    if (otherHalf != null && otherHalf.getBlockData() instanceof Openable other && other.isOpen() != open) {
+                        other.setOpen(open);
                         otherHalf.setBlockData(other, true);
                         try {
                             otherHalf.getState().update();
@@ -263,7 +312,7 @@ final class WallClimber {
                 try {
                     block.getState().update();
                 } catch (Throwable ignored) {}
-                playDoorSound(entity, block);
+                playDoorSound(entity, block, open);
                 return true;
             }
         } catch (Throwable ignored) {
@@ -271,22 +320,22 @@ final class WallClimber {
         return false;
     }
 
-    private static void playDoorSound(LivingEntity entity, Block block) {
+    private static void playDoorSound(LivingEntity entity, Block block, boolean open) {
         try {
             Material mat = block.getType();
             String name = mat != null ? mat.name() : "";
             Sound sound;
-            if (name.contains("IRON_DOOR")) sound = Sound.BLOCK_IRON_DOOR_OPEN;
-            else if (name.contains("IRON_TRAPDOOR")) sound = Sound.BLOCK_IRON_TRAPDOOR_OPEN;
-            else if (name.contains("COPPER_DOOR")) sound = Sound.BLOCK_COPPER_DOOR_OPEN;
-            else if (name.contains("COPPER_TRAPDOOR")) sound = Sound.BLOCK_COPPER_TRAPDOOR_OPEN;
-            else if (name.contains("TRAPDOOR")) sound = Sound.BLOCK_WOODEN_TRAPDOOR_OPEN;
-            else if (name.contains("GATE")) sound = Sound.BLOCK_FENCE_GATE_OPEN;
-            else sound = Sound.BLOCK_WOODEN_DOOR_OPEN;
+            if (name.contains("IRON_DOOR")) sound = open ? Sound.BLOCK_IRON_DOOR_OPEN : Sound.BLOCK_IRON_DOOR_CLOSE;
+            else if (name.contains("IRON_TRAPDOOR")) sound = open ? Sound.BLOCK_IRON_TRAPDOOR_OPEN : Sound.BLOCK_IRON_TRAPDOOR_CLOSE;
+            else if (name.contains("COPPER_DOOR")) sound = open ? Sound.BLOCK_COPPER_DOOR_OPEN : Sound.BLOCK_COPPER_DOOR_CLOSE;
+            else if (name.contains("COPPER_TRAPDOOR")) sound = open ? Sound.BLOCK_COPPER_TRAPDOOR_OPEN : Sound.BLOCK_COPPER_TRAPDOOR_CLOSE;
+            else if (name.contains("TRAPDOOR")) sound = open ? Sound.BLOCK_WOODEN_TRAPDOOR_OPEN : Sound.BLOCK_WOODEN_TRAPDOOR_CLOSE;
+            else if (name.contains("GATE")) sound = open ? Sound.BLOCK_FENCE_GATE_OPEN : Sound.BLOCK_FENCE_GATE_CLOSE;
+            else sound = open ? Sound.BLOCK_WOODEN_DOOR_OPEN : Sound.BLOCK_WOODEN_DOOR_CLOSE;
             block.getWorld().playSound(block.getLocation().add(0.5, 0.5, 0.5), sound, 1.0f, 1.0f);
         } catch (Throwable ignored) {
         }
-        if (entity != null) {
+        if (entity != null && open) {
             try {
                 entity.swingMainHand();
             } catch (Throwable ignored) {

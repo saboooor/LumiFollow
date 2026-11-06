@@ -43,6 +43,9 @@ public final class LumiFollow implements Listener, AutoCloseable {
         FollowController controller = controllers.remove(npc);
         if (controller != null) controller.close();
     }
+    public Map<NPC, FollowController> controllers() {
+        return Collections.unmodifiableMap(new IdentityHashMap<>(controllers));
+    }
     private void stopTarget(Player player) {
         for (FollowController controller : controllers.values()) {
             if (controller.follows(player)) controller.stop();

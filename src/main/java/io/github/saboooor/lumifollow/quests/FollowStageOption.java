@@ -28,6 +28,20 @@ public final class FollowStageOption<T extends AbstractStage> extends StageOptio
         super(stageClass);
         this.plugin = plugin;
     }
+    boolean isEnabled() { return enabled; }
+    String npcData() { return npcData; }
+    FollowOptions options() { return options; }
+    int activeSessionCount() { return sessions.size(); }
+    List<String> describeState() {
+        return List.of(
+                "§7Enabled: " + (enabled ? "§aYes" : "§cNo"),
+                "§7NPC data key: §f" + npcData,
+                "§7Open doors: §f" + options.openDoors()
+                        + (options.closeDoorsDelayTicks() > 0 ? " (" + options.closeDoorsDelayTicks() + "t close)" : ""),
+                "§7Climbing: §f" + options.climbing() + " (max " + options.maxClimbHeight() + ")",
+                "§7Mount vehicles: §f" + options.mountVehicles()
+        );
+    }
     @Override public FollowStageOption<T> clone() {
         var copy = new FollowStageOption<T>(getStageClass(), plugin);
         copy.enabled = enabled;
@@ -36,28 +50,54 @@ public final class FollowStageOption<T extends AbstractStage> extends StageOptio
         return copy;
     }
     @Override public String getName() { return "LumiFollow NPC following"; }
-    @Override public void startEdition(StageCreation<T> creation) { enabled = !enabled; }
+    @Override public void startEdition(StageCreation<T> creation) {
+        enabled = !enabled;
+    }
     @Override public boolean shouldSave() { return enabled; }
     @Override public void save(ConfigurationSection section) {
+        FollowOptions defaults = FollowOptions.defaults();
         section.set("enabled", enabled);
         section.set("npc-data", npcData);
         section.set("open-doors", options.openDoors());
+        if (options.closeDoorsDelayTicks() != defaults.closeDoorsDelayTicks()) {
+            section.set("close-doors-delay-ticks", options.closeDoorsDelayTicks());
+        }
         section.set("climbing", options.climbing());
         section.set("max-climb-height", options.maxClimbHeight());
         section.set("climb-timeout-ticks", options.climbTimeoutTicks());
         section.set("teleport-recovery", options.teleportRecovery());
         section.set("follow-teleports", options.followTeleports());
         section.set("cross-world", options.crossWorld());
+        if (options.teleportSound() != defaults.teleportSound()) {
+            section.set("teleport-sound", options.teleportSound());
+        }
+        if (options.mountVehicles() != defaults.mountVehicles()) {
+            section.set("mount-vehicles", options.mountVehicles());
+        }
+        if (Float.compare(options.walkSpeed(), defaults.walkSpeed()) != 0) {
+            section.set("walk-speed", options.walkSpeed());
+        }
+        if (Float.compare(options.sprintSpeed(), defaults.sprintSpeed()) != 0) {
+            section.set("sprint-speed", options.sprintSpeed());
+        }
+        if (Double.compare(options.stopDistance(), defaults.stopDistance()) != 0) {
+            section.set("stop-distance", options.stopDistance());
+        }
+        if (Float.compare(options.range(), defaults.range()) != 0) {
+            section.set("range", options.range());
+        }
+        if (options.updatePathTicks() != defaults.updatePathTicks()) {
+            section.set("update-path-ticks", options.updatePathTicks());
+        }
+        if (options.stationaryTicks() != defaults.stationaryTicks()) {
+            section.set("stationary-ticks", options.stationaryTicks());
+        }
     }
     @Override public void load(ConfigurationSection section) {
         enabled = section.getBoolean("enabled", true);
         npcData = section.getString("npc-data", "npc");
         if (npcData == null || npcData.isBlank()) throw new IllegalArgumentException("LumiFollow npc-data must not be blank");
-        options = FollowOptions.defaults().withDoors(section.getBoolean("open-doors", true))
-                .withClimbing(section.getBoolean("climbing", true), section.getInt("max-climb-height", 6),
-                        section.getInt("climb-timeout-ticks", 100))
-                .withRecovery(section.getBoolean("teleport-recovery", true),
-                        section.getBoolean("follow-teleports", true), section.getBoolean("cross-world", false));
+        options = FollowOptions.read(section, true, false);
     }
     @Override public void stageLoad(StageController controller) {
         super.stageLoad(controller);

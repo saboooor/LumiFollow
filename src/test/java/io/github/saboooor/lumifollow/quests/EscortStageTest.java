@@ -114,4 +114,67 @@ class EscortStageTest {
             verify(plugin.following).release(npc);
         }
     }
+
+    @Test void returnToStartPolicyTeleportsNpcBackToSnapshotOriginOnRelease() {
+        var registry = mock(NPCRegistry.class);
+        when(registry.getById(7)).thenReturn(npc);
+        Location startClone = mock(Location.class);
+        World world = npc.getEntity().getLocation().getWorld();
+        when(startClone.getWorld()).thenReturn(world);
+        when(npc.getEntity().getLocation().clone()).thenReturn(startClone);
+        var returnProfile = new EscortProfile(7, "world", 10, 64, 0, 4, FollowOptions.defaults(),
+                EscortProfile.EndPolicy.RETURN_TO_START, null, false, false, -1);
+        when(plugin.profile("route")).thenReturn(returnProfile);
+        try (var citizens = mockStatic(CitizensAPI.class)) {
+            citizens.when(CitizensAPI::getNPCRegistry).thenReturn(registry);
+            var stage = new EscortStage(controller, plugin, "route");
+            stage.started(quester);
+            stage.tick();
+            stage.ended(quester);
+            verify(npc).teleport(eq(startClone), eq(org.bukkit.event.player.PlayerTeleportEvent.TeleportCause.PLUGIN));
+        }
+    }
+
+    @Test void cloneNpcModeSpawnsPerPlayerCloneAndDestroysItOnEnd() {
+        var registry = mock(NPCRegistry.class);
+        when(registry.getById(7)).thenReturn(npc);
+        NPC cloned = mock(NPC.class);
+        var entity = npc.getEntity();
+        when(npc.clone()).thenReturn(cloned);
+        when(cloned.isSpawned()).thenReturn(true);
+        when(cloned.getEntity()).thenReturn(entity);
+        var cloneProfile = new EscortProfile(7, "world", 10, 64, 0, 4, FollowOptions.defaults(),
+                EscortProfile.EndPolicy.STAY, null, true, false, -1);
+        when(plugin.profile("route")).thenReturn(cloneProfile);
+        try (var citizens = mockStatic(CitizensAPI.class)) {
+            citizens.when(CitizensAPI::getNPCRegistry).thenReturn(registry);
+            var stage = new EscortStage(controller, plugin, "route");
+            stage.started(quester);
+            stage.tick();
+            verify(plugin.following).follow(cloned, player, cloneProfile.options());
+            stage.ended(quester);
+            verify(plugin.following).release(cloned);
+            verify(cloned).destroy();
+        }
+    }
+
+    @Test void npcDeathFailsObjectiveAndCancelsOrBranchesQuest() {
+        var registry = mock(NPCRegistry.class);
+        when(registry.getById(7)).thenReturn(npc);
+        var deathProfile = new EscortProfile(7, "world", 10, 64, 0, 4, FollowOptions.defaults(),
+                EscortProfile.EndPolicy.STAY, null, false, true, -1);
+        when(plugin.profile("route")).thenReturn(deathProfile);
+        fr.skytasul.quests.api.quests.Quest quest = mock(fr.skytasul.quests.api.quests.Quest.class);
+        when(controller.getBranch().getQuest()).thenReturn(quest);
+        try (var citizens = mockStatic(CitizensAPI.class)) {
+            citizens.when(CitizensAPI::getNPCRegistry).thenReturn(registry);
+            var stage = new EscortStage(controller, plugin, "route");
+            stage.started(quester);
+            stage.tick();
+            when(((Player) npc.getEntity()).isDead()).thenReturn(true);
+            stage.tick();
+            verify(plugin.following).release(npc);
+            verify(quest).cancelQuester(quester);
+        }
+    }
 }

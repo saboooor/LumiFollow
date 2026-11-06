@@ -174,4 +174,23 @@ class FollowStageOptionTest {
         copy.save(saved);
         assertEquals(yaml.saveToString(), saved.saveToString());
     }
+
+    @Test void extendedSpeedDoorAndVehicleOptionsLoadAndSaveCleanly() {
+        var yaml = new YamlConfiguration();
+        yaml.set("enabled", true);
+        yaml.set("walk-speed", 1.25);
+        yaml.set("sprint-speed", 1.65);
+        yaml.set("close-doors-delay-ticks", 30);
+        yaml.set("mount-vehicles", true);
+        option.load(yaml);
+        assertEquals(1.25F, option.options().walkSpeed(), 0.001F);
+        assertEquals(1.65F, option.options().sprintSpeed(), 0.001F);
+        assertEquals(30, option.options().closeDoorsDelayTicks());
+        assertTrue(option.options().mountVehicles());
+
+        var saved = new YamlConfiguration();
+        option.save(saved);
+        assertEquals(30, saved.getInt("close-doors-delay-ticks"));
+        assertTrue(saved.getBoolean("mount-vehicles"));
+    }
 }
