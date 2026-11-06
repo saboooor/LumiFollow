@@ -115,6 +115,19 @@ class EscortStageTest {
         }
     }
 
+    @Test void missingProfileDoesNotBreakQuestLoadingAndStageWaits() {
+        when(plugin.profile("missing")).thenThrow(new IllegalArgumentException("Unknown LumiFollow escort profile 'missing'"));
+        when(plugin.getLogger()).thenReturn(java.util.logging.Logger.getLogger("test"));
+        var stage = assertDoesNotThrow(() -> new EscortStage(controller, plugin, "missing"));
+        assertNull(stage.profile());
+        stage.started(quester);
+        stage.tick();
+        stage.tick();
+        verify(player, times(1)).sendMessage(contains("missing"));
+        verifyNoInteractions(plugin.following);
+        verify(controller, never()).finishStage(any());
+    }
+
     @Test void returnToStartPolicyTeleportsNpcBackToSnapshotOriginOnRelease() {
         var registry = mock(NPCRegistry.class);
         when(registry.getById(7)).thenReturn(npc);

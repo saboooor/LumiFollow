@@ -35,11 +35,25 @@ public final class EscortStage extends AbstractStage {
         super(controller);
         this.plugin = plugin;
         this.profileName = profileName;
-        this.profile = plugin.profile(profileName);
+        // Never fail quest loading over a missing/invalid profile: log it and wait until it is configured.
+        reloadProfile();
     }
     EscortProfile profile() { return profile; }
     int activeSessionCount() { return sessions.size(); }
-    void reloadProfile() { this.profile = plugin.profile(profileName); }
+    /** Re-resolves the profile; returns false (keeping the stage idle) when it is missing or invalid. */
+    boolean reloadProfile() {
+        try {
+            this.profile = plugin.profile(profileName);
+            return true;
+        } catch (IllegalArgumentException ex) {
+            this.profile = null;
+            if (plugin.getLogger() != null) {
+                plugin.getLogger().warning(ex.getMessage() + " — escort stages using it will wait until it is"
+                        + " configured and '/lumifollow reload' is run.");
+            }
+            return false;
+        }
+    }
     @Override public void load() { super.load(); plugin.stages.add(this); }
     @Override public void unload() { stopAll(); plugin.stages.remove(this); super.unload(); }
     @Override protected void serialize(ConfigurationSection section) {
@@ -75,7 +89,7 @@ public final class EscortStage extends AbstractStage {
         session.cloned = false;
     }
     private void returnNpcOnEnd(Session session) {
-        if (profile.endPolicy() == EscortProfile.EndPolicy.STAY || !session.npc.isSpawned()) return;
+        if (profile == null || profile.endPolicy() == EscortProfile.EndPolicy.STAY || !session.npc.isSpawned()) return;
         Location destination = null;
         if (profile.endPolicy() == EscortProfile.EndPolicy.RETURN_HOME && profile.home() != null) {
             destination = profile.home().toBukkitLocation();
@@ -98,6 +112,14 @@ public final class EscortStage extends AbstractStage {
             if (!getController().hasStarted(quester)) { ended(quester); continue; }
             Player player = quester instanceof PlayerQuester personal ? personal.getPlayer().orElse(null) : null;
             if (player == null || !player.isOnline() || player.isDead()) { release(session); continue; }
+            if (profile == null) {
+                if (!session.notified) {
+                    player.sendMessage("§cThis escort is not configured yet (missing LumiFollow profile '"
+                            + profileName + "'). Please contact an administrator.");
+                    session.notified = true;
+                }
+                continue;
+            }
             if (session.npc != null && profile.failOnDeath() && isDeadOrDespawned(session.npc)) {
                 handleNpcDeath(quester, player);
                 continue;
@@ -176,6 +198,7 @@ public final class EscortStage extends AbstractStage {
         }
     }
     @Override public String getDefaultDescription(StageDescriptionPlaceholdersContext context) {
+        if (profile == null) return "Escort (profile '" + profileName + "' is not configured)";
         String formatted = plugin.formatStageDescription(profile);
         if (formatted != null) return formatted;
         return "Escort NPC " + profile.npcId() + " to " + profile.world() + " ("

@@ -244,8 +244,17 @@ public final class LumiFollowPlugin extends JavaPlugin implements Listener {
             reloadConfig();
             section = getConfig().getConfigurationSection("escorts." + name);
         }
+        if (section == null) {
+            throw new IllegalArgumentException("Unknown LumiFollow escort profile '" + name
+                    + "'. Add it under 'escorts." + name + "' in plugins/LumiFollow/config.yml (available: "
+                    + String.join(", ", availableProfiles()) + ")");
+        }
         ensureConfiguredNpcs();
-        return EscortProfile.read(section);
+        try {
+            return EscortProfile.read(section);
+        } catch (IllegalArgumentException ex) {
+            throw new IllegalArgumentException("Invalid LumiFollow escort profile '" + name + "': " + ex.getMessage(), ex);
+        }
     }
     @Override public void onDisable() {
         if (task != null) task.cancel();
